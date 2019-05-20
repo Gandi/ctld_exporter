@@ -30,6 +30,6 @@ Flags:
 ```
 
 ## Caveats
-This exporter NEED to be build on FreeBSD with access to core source (expected location is `/usr/src/`).
+This exporter NEEDS to be build on FreeBSD with access to core source (expected location is `/usr/src/`).
 The exporter must have r/w access to `/dev/cam/ctl` thus needing root privileges.
 
