@@ -146,6 +146,7 @@ type Ctl_io_stats struct {
 // Wrapper around CGO code to collect the statistics of every LUN
 func GetStats() map[uint32]Ctl_io_stats {
 	fd, _ := os.Open(C.CTL_DEFAULT_DEV)
+	defer fd.Close()
 	var alloc_items C.int
 	var num_items C.int
 	var stats *C.struct_ctl_io_stats
@@ -222,6 +223,7 @@ func (cp CtlPortList) GetLunId(lunNumber uint) (uint, error) {
 // Wrapper around CGO code to get the list of targets
 func GetTargets() CtlPortList {
 	fd, _ := os.Open(C.CTL_DEFAULT_DEV)
+	defer fd.Close()
 	output := CtlPortList{}
 	var xmlLen C.int = 4096
 	xmlString := C.GoStringN(C.getports(C.int(fd.Fd()), &xmlLen), xmlLen)
