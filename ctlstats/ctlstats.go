@@ -122,6 +122,7 @@ retry:
 import "C"
 import (
 	"encoding/xml"
+	"errors"
 	"log"
 	"os"
 	"unsafe"
@@ -209,13 +210,13 @@ func (cp CtlPortList) GetLunTarget(lunNumber uint) *Target {
 }
 
 // Get Lun ID in target from kernel LUN number
-func (cp CtlPortList) GetLunId(lunNumber uint) uint {
+func (cp CtlPortList) GetLunId(lunNumber uint) (uint, error) {
 	for _, lun := range cp.GetLunTarget(lunNumber).LUN {
 		if lun.LunNumber == lunNumber {
-			return lun.Id
+			return lun.Id, nil
 		}
 	}
-	return 0
+	return 0, errors.New("Unkown LUN in target")
 }
 
 // Wrapper around CGO code to get the list of targets

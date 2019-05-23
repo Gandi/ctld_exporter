@@ -44,8 +44,18 @@ func (ic iscsiCollector) Describe(ch chan<- *prometheus.Desc) {
 func (ic iscsiCollector) Collect(ch chan<- prometheus.Metric) {
 	dataByLun := ctlstats.GetStats()
 	targets := ctlstats.GetTargets()
+	dropped := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "iscsi_unknown_target",
+		Help: "Current number of unkown targets/lun",
+	})
+	dropped.Set(0)
 	for lun, data := range dataByLun {
-		stringlun := strconv.FormatUint(uint64(targets.GetLunId(uint(lun))), 10)
+		lunid, err := targets.GetLunId(uint(lun))
+		if err != nil {
+			dropped.Inc()
+			continue
+		}
+		stringlun := strconv.FormatUint(uint64(lunid), 10)
 		target := targets.GetLunTarget(uint(lun)).Name
 		ch <- prometheus.MustNewConstMetric(
 			ioBytesDesc,
@@ -93,8 +103,12 @@ func (ic iscsiCollector) Collect(ch chan<- prometheus.Metric) {
 			float64(data.Dmas[ctlstats.CTL_STATS_WRITE]),
 			"WRITE", target, stringlun)
 	}
+	ch <- dropped
 	for _, target := range targets.Targets {
 		if target.Name == "" {
+			continue
+		}
+		if len(target.LUN) == 0 {
 			continue
 		}
 		ch <- prometheus.MustNewConstMetric(
