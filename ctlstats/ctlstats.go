@@ -152,6 +152,7 @@ func GetStats() map[uint32]Ctl_io_stats {
 	var stats *C.struct_ctl_io_stats
 	output := map[uint32]Ctl_io_stats{}
 	C.getstats(C.int(fd.Fd()), &alloc_items, &num_items, &stats)
+	defer C.free(unsafe.Pointer(stats))
 	io_stats := (*[1 << 28]C.struct_ctl_io_stats)(unsafe.Pointer(stats))[:num_items:alloc_items]
 	for _, item := range io_stats {
 		output[uint32(item.item)] = Ctl_io_stats{
@@ -226,7 +227,9 @@ func GetTargets() CtlPortList {
 	defer fd.Close()
 	output := CtlPortList{}
 	var xmlLen C.int = 4096
-	xmlString := C.GoStringN(C.getports(C.int(fd.Fd()), &xmlLen), xmlLen)
+	xmlCString := C.getports(C.int(fd.Fd()), &xmlLen)
+	defer C.free(unsafe.Pointer(xmlCString))
+	xmlString := C.GoStringN(xmlCString, xmlLen)
 	err := xml.Unmarshal([]byte(xmlString), &output)
 	if err != nil {
 		log.Println(err)
