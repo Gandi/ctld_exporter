@@ -118,6 +118,41 @@ retry:
 	}
 	return port_str;
 }
+
+char* getdevs(int fd, int* dev_len){
+	// The code of this function comes from ctladm.c of the FreeBSD project
+	// It is covered by BSD-2-Clause-FreeBSD
+	// Copyright (c) 2003, 2004 Silicon Graphics International Corp.
+	// Copyright (c) 1997-2007 Kenneth D. Merry
+	// Copyright (c) 2012 The FreeBSD Foundation
+	// Copyright (c) 2018 Marcelo Araujo <araujo@FreeBSD.org>
+	// All rights reserved.
+
+	struct ctl_lun_list list;
+	char *lun_str = NULL;
+
+retry:
+	lun_str = (char *)realloc(lun_str, *dev_len);
+
+	bzero(&list, sizeof(list));
+	list.alloc_len = *dev_len;
+	list.status = CTL_LUN_LIST_NONE;
+	list.lun_xml = lun_str;
+
+	if (ioctl(fd, CTL_LUN_LIST, &list) == -1) {
+		warn("%s: error issuing CTL_LUN_LIST ioctl", __func__);
+	}
+
+	if (list.status == CTL_LUN_LIST_ERROR) {
+		warnx("%s: error returned from CTL_LUN_LIST ioctl:\n%s",
+		      __func__, list.error_str);
+	} else if (list.status == CTL_LUN_LIST_NEED_MORE_SPACE) {
+		*dev_len = *dev_len << 1;
+		goto retry;
+	}
+
+	return lun_str;
+}
 */
 import "C"
 import (
@@ -193,16 +228,37 @@ type Target struct {
 }
 
 type CtlPortList struct {
-	Targets  []Target `xml:"targ_port"`
-	lunTable map[uint]uint
+	Targets      []Target `xml:"targ_port"`
+	lunTable     map[uint]uint
+	lunToIdTable map[uint]uint
+}
+
+type DevLUN struct {
+	BackendType string `xml:"backend_type"`
+	File        string `xml:"file"`
+	Id          uint   `xml:"id,attr"`
+}
+
+type CtlLunList struct {
+	Luns     []DevLUN `xml:"lun"`
+	lunTable map[uint]string
 }
 
 func (cp *CtlPortList) populateLunTable() {
 	cp.lunTable = make(map[uint]uint)
+	cp.lunToIdTable = make(map[uint]uint)
 	for index, target := range cp.Targets {
 		for _, lun := range target.LUN {
 			cp.lunTable[lun.LunNumber] = uint(index)
+			cp.lunToIdTable[lun.LunNumber] = lun.Id
 		}
+	}
+}
+
+func (cp *CtlLunList) populateLunTable() {
+	cp.lunTable = make(map[uint]string)
+	for _, lun := range cp.Luns {
+		cp.lunTable[lun.Id] = lun.File
 	}
 }
 
@@ -213,12 +269,28 @@ func (cp CtlPortList) GetLunTarget(lunNumber uint) *Target {
 
 // Get Lun ID in target from kernel LUN number
 func (cp CtlPortList) GetLunId(lunNumber uint) (uint, error) {
-	for _, lun := range cp.GetLunTarget(lunNumber).LUN {
-		if lun.LunNumber == lunNumber {
-			return lun.Id, nil
-		}
+	if _, found := cp.lunToIdTable[lunNumber]; found {
+		return cp.lunToIdTable[lunNumber], nil
 	}
+
 	return 0, errors.New("Unkown LUN in target")
+
+	// for _, lun := range cp.GetLunTarget(lunNumber).LUN {
+	// 	if lun.LunNumber == lunNumber {
+	// 		return lun.Id, nil
+	// 	}
+	// }
+	// return 0, errors.New("Unkown LUN in target")
+}
+
+func (cp CtlLunList) GetFile(lunNumber uint) (string, error) {
+
+	if _, found := cp.lunTable[lunNumber]; found {
+		return cp.lunTable[lunNumber], nil
+	} else {
+		return "", errors.New("Unkown LUN in target")
+	}
+
 }
 
 // Wrapper around CGO code to get the list of targets
@@ -228,6 +300,22 @@ func GetTargets() CtlPortList {
 	output := CtlPortList{}
 	var xmlLen C.int = 4096
 	xmlCString := C.getports(C.int(fd.Fd()), &xmlLen)
+	defer C.free(unsafe.Pointer(xmlCString))
+	xmlString := C.GoStringN(xmlCString, xmlLen)
+	err := xml.Unmarshal([]byte(xmlString), &output)
+	if err != nil {
+		log.Println(err)
+	}
+	output.populateLunTable()
+	return output
+}
+
+func GetDevLuns() CtlLunList {
+	fd, _ := os.Open(C.CTL_DEFAULT_DEV)
+	defer fd.Close()
+	output := CtlLunList{}
+	var xmlLen C.int = 4096
+	xmlCString := C.getdevs(C.int(fd.Fd()), &xmlLen)
 	defer C.free(unsafe.Pointer(xmlCString))
 	xmlString := C.GoStringN(xmlCString, xmlLen)
 	err := xml.Unmarshal([]byte(xmlString), &output)
