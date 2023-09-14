@@ -274,13 +274,6 @@ func (cp CtlPortList) GetLunId(lunNumber uint) (uint, error) {
 	}
 
 	return 0, errors.New("Unkown LUN in target")
-
-	// for _, lun := range cp.GetLunTarget(lunNumber).LUN {
-	// 	if lun.LunNumber == lunNumber {
-	// 		return lun.Id, nil
-	// 	}
-	// }
-	// return 0, errors.New("Unkown LUN in target")
 }
 
 func (cp CtlLunList) GetFile(lunNumber uint) (string, error) {
