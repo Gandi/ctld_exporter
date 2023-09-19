@@ -2,31 +2,33 @@
 package main
 
 import (
+	"net/http"
+	"path/filepath"
+	"strconv"
+
 	"github.com/Gandi/ctld_exporter/ctlstats"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"net/http"
-	"strconv"
 )
 
 var (
 	ioBytesDesc = prometheus.NewDesc(
 		"iscsi_target_bytes",
 		"Number of bytes",
-		[]string{"type", "target", "lun"}, nil,
+		[]string{"type", "target", "lun", "filepath", "filename"}, nil,
 	)
 	ioOperationsDesc = prometheus.NewDesc(
 		"iscsi_target_operations",
 		"Number of operations",
-		[]string{"type", "target", "lun"}, nil,
+		[]string{"type", "target", "lun", "filepath", "filename"}, nil,
 	)
 	ioDmasDesc = prometheus.NewDesc(
 		"iscsi_target_dmas",
 		"Number of DMA",
-		[]string{"type", "target", "lun"}, nil,
+		[]string{"type", "target", "lun", "filepath", "filename"}, nil,
 	)
 	initiatorsNumberDesc = prometheus.NewDesc(
 		"iscsi_target_initiators",
@@ -44,6 +46,8 @@ func (ic iscsiCollector) Describe(ch chan<- *prometheus.Desc) {
 func (ic iscsiCollector) Collect(ch chan<- prometheus.Metric) {
 	dataByLun := ctlstats.GetStats()
 	targets := ctlstats.GetTargets()
+	devLuns := ctlstats.GetDevLuns()
+
 	dropped := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "iscsi_unknown_target",
 		Help: "Current number of unkown targets/lun",
@@ -55,53 +59,54 @@ func (ic iscsiCollector) Collect(ch chan<- prometheus.Metric) {
 			dropped.Inc()
 			continue
 		}
+		file, err := devLuns.GetFile(uint(lun))
 		stringlun := strconv.FormatUint(uint64(lunid), 10)
 		target := targets.GetLunTarget(uint(lun)).Name
 		ch <- prometheus.MustNewConstMetric(
 			ioBytesDesc,
 			prometheus.CounterValue,
 			float64(data.Bytes[ctlstats.CTL_STATS_NO_IO]),
-			"NO IO", target, stringlun)
+			"NO IO", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioBytesDesc,
 			prometheus.CounterValue,
 			float64(data.Bytes[ctlstats.CTL_STATS_READ]),
-			"READ", target, stringlun)
+			"READ", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioBytesDesc,
 			prometheus.CounterValue,
 			float64(data.Bytes[ctlstats.CTL_STATS_WRITE]),
-			"WRITE", target, stringlun)
+			"WRITE", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioOperationsDesc,
 			prometheus.CounterValue,
 			float64(data.Operations[ctlstats.CTL_STATS_NO_IO]),
-			"NO IO", target, stringlun)
+			"NO IO", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioOperationsDesc,
 			prometheus.CounterValue,
 			float64(data.Operations[ctlstats.CTL_STATS_READ]),
-			"READ", target, stringlun)
+			"READ", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioOperationsDesc,
 			prometheus.CounterValue,
 			float64(data.Operations[ctlstats.CTL_STATS_WRITE]),
-			"WRITE", target, stringlun)
+			"WRITE", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioDmasDesc,
 			prometheus.CounterValue,
 			float64(data.Dmas[ctlstats.CTL_STATS_NO_IO]),
-			"NO IO", target, stringlun)
+			"NO IO", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioDmasDesc,
 			prometheus.CounterValue,
 			float64(data.Dmas[ctlstats.CTL_STATS_READ]),
-			"READ", target, stringlun)
+			"READ", target, stringlun, file, filepath.Base(file))
 		ch <- prometheus.MustNewConstMetric(
 			ioDmasDesc,
 			prometheus.CounterValue,
 			float64(data.Dmas[ctlstats.CTL_STATS_WRITE]),
-			"WRITE", target, stringlun)
+			"WRITE", target, stringlun, file, filepath.Base(file))
 	}
 	ch <- dropped
 	for _, target := range targets.Targets {
